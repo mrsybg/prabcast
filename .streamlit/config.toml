@@ -1,0 +1,15 @@
+[theme]
+base="light"
+primaryColor="#009ed7"
+secondaryBackgroundColor="#eeeee"
+textColor="#009ed7"
+
+[ui]
+hideTopBar = false
+
+[server]
+headless = false
+port = 8501
+
+[client]
+toolbarMode = "viewer"

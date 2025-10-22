@@ -1,0 +1,586 @@
+# models.py
+import numpy as np
+import pandas as pd
+from statsmodels.tsa.arima.model import ARIMA
+from prophet import Prophet
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, GRU
+from tensorflow.keras import backend as K
+from statsmodels.tsa.holtwinters import SimpleExpSmoothing, ExponentialSmoothing
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from xgboost import XGBRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import MinMaxScaler
+import warnings
+
+# Model Management
+from setup_module.model_base import BaseForecastModel, ModelMetadata, ModelCategory
+
+warnings.filterwarnings("ignore")  # Suppress warnings for cleaner output
+
+class SeasonalNaiveModel(BaseForecastModel):
+    """Seasonal Naive Forecast - wiederholt letzte Saison."""
+    
+    def __init__(self, season_length=12):
+        super().__init__(season_length=season_length)
+        self.season_length = season_length
+
+    def fit(self, data, **kwargs):
+        self.data = data
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        last_season = self.data.iloc[-self.season_length:].values
+        repeats = steps // self.season_length + 1
+        forecast = np.tile(last_season, repeats)[:steps]
+        return pd.Series(forecast.flatten(), index=pd.date_range(self.data.index[-1] + pd.DateOffset(months=1), periods=steps, freq='M'))
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="Seasonal Naive",
+            description="Wiederholt die letzte Saison - einfache Baseline für saisonale Daten",
+            category=ModelCategory.NAIVE,
+            supports_seasonality=True,
+            min_data_points=12,
+            default_params={"season_length": 12}
+        )
+
+class MovingAverageModel(BaseForecastModel):
+    """Moving Average Forecast - nutzt Durchschnitt der letzten N Werte."""
+    
+    def __init__(self, window=12):
+        super().__init__(window=window)
+        self.window = window
+
+    def fit(self, data, **kwargs):
+        self.data = data
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        mean_value = self.data.iloc[-self.window:].mean()
+        forecast = pd.Series([mean_value] * steps,
+                             index=pd.date_range(self.data.index[-1] + pd.DateOffset(months=1),
+                                                 periods=steps, freq='M'))
+        return forecast
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="Moving Average",
+            description="Durchschnitt der letzten N Werte - einfache Baseline",
+            category=ModelCategory.NAIVE,
+            min_data_points=12,
+            default_params={"window": 12}
+        )
+
+class ARIMAModel(BaseForecastModel):
+    """ARIMA - AutoRegressive Integrated Moving Average."""
+    
+    def __init__(self, order=(1, 1, 1)):
+        super().__init__(order=order)
+        self.order = order
+        self.model = None
+
+    def fit(self, data, **kwargs):
+        self.data = data
+        self.model = ARIMA(data, order=self.order).fit()
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        forecast = self.model.forecast(steps=steps)
+        return forecast
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="ARIMA",
+            description="AutoRegressive Integrated Moving Average - klassisches Zeitreihenmodell",
+            category=ModelCategory.STATISTICAL,
+            requires_stationarity=True,
+            is_probabilistic=True,
+            min_data_points=30,
+            default_params={"order": (1, 1, 1)}
+        )
+
+def standardize_data(data):
+    """
+    Standardizes input data for all models.
+    Returns both original format and Prophet format (ds, y).
+    """
+    # Original format - datetime index and values
+    std_data = data.copy()
+    if not isinstance(std_data.index, pd.DatetimeIndex):
+        std_data.index = pd.to_datetime(std_data.index)
+    
+    # Prophet format - ds and y columns
+    prophet_data = pd.DataFrame({
+        'ds': std_data.index,
+        'y': std_data.values
+    })
+    
+    return std_data, prophet_data
+
+# Update ProphetModel class
+class ProphetModel(BaseForecastModel):
+    """Prophet - Facebook's Zeitreihenmodell mit Trend und Saisonalität."""
+    
+    def __init__(self):
+        super().__init__()
+        self.model = None
+        self.data = None
+        self.params = {}
+
+    def fit(self, data, yearly_seasonality='auto', weekly_seasonality='auto', **kwargs):
+        _, prophet_data = standardize_data(data)
+        self.data = data
+        self.params = {
+            'yearly_seasonality': yearly_seasonality,
+            'weekly_seasonality': weekly_seasonality,
+            **kwargs
+        }
+        self.model = Prophet(**self.params)
+        self.model.fit(prophet_data)
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        future_dates = pd.date_range(
+            start=self.data.index[-1] + pd.DateOffset(months=1),
+            periods=steps,
+            freq='M'
+        )
+        future_df = pd.DataFrame({'ds': future_dates})
+        forecast = self.model.predict(future_df)
+        return pd.Series(forecast['yhat'].values, index=future_dates)
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="Prophet",
+            description="Facebook Prophet - automatische Trend- und Saisonalitätserkennung",
+            category=ModelCategory.STATISTICAL,
+            supports_seasonality=True,
+            is_probabilistic=True,
+            min_data_points=20,
+            default_params={}
+        )
+
+class LSTMModel(BaseForecastModel):
+    """LSTM - Long Short-Term Memory Neural Network."""
+    
+    def __init__(self, epochs=50, batch_size=1):
+        super().__init__(epochs=epochs, batch_size=batch_size)
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.model = None
+        self.scaler = None
+        self.last_sequence = None
+        self.data = None
+
+    def __del__(self):
+        """Cleanup Keras session when model is deleted"""
+        if self.model is not None:
+            K.clear_session()
+            del self.model
+
+    def fit(self, data, **kwargs):
+        # Clear any previous session
+        K.clear_session()
+        
+        self.data = data
+        scaler = MinMaxScaler()
+        scaled_data = scaler.fit_transform(data.values.reshape(-1, 1))
+        self.scaler = scaler
+
+        X, y = [], []
+        window_size = 12
+        for i in range(window_size, len(scaled_data)):
+            X.append(scaled_data[i-window_size:i, 0])
+            y.append(scaled_data[i, 0])
+        X, y = np.array(X), np.array(y)
+        X = np.reshape(X, (X.shape[0], X.shape[1], 1))
+
+        self.model = Sequential()
+        self.model.add(LSTM(50, return_sequences=True, input_shape=(X.shape[1], 1)))
+        self.model.add(LSTM(50))
+        self.model.add(Dense(1))
+        self.model.compile(optimizer='adam', loss='mean_squared_error')
+        self.model.fit(X, y, epochs=self.epochs, batch_size=self.batch_size, verbose=0)
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        last_sequence = self.scaler.transform(self.data.values[-12:].reshape(-1, 1)).flatten().tolist()
+        forecast = []
+        for _ in range(steps):
+            input_seq = np.array(last_sequence[-12:]).reshape((1, 12, 1))
+            pred = self.model.predict(input_seq, verbose=0)
+            forecast.append(pred[0,0])
+            last_sequence.append(pred[0,0])
+        forecast = self.scaler.inverse_transform(np.array(forecast).reshape(-1, 1)).flatten()
+        return pd.Series(forecast, index=pd.date_range(self.data.index[-1] + pd.DateOffset(months=1), 
+                                                     periods=steps, freq='M'))
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="LSTM",
+            description="Long Short-Term Memory - Deep Learning für komplexe Muster",
+            category=ModelCategory.DEEP_LEARNING,
+            requires_long_history=True,
+            min_data_points=50,
+            default_params={"epochs": 50, "batch_size": 1}
+        )
+
+class GRUModel(BaseForecastModel):
+    """GRU - Gated Recurrent Unit Neural Network."""
+    
+    def __init__(self, epochs=50, batch_size=1):
+        super().__init__(epochs=epochs, batch_size=batch_size)
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.model = None
+        self.scaler = None
+        self.last_sequence = None
+        self.data = None
+
+    def __del__(self):
+        """Cleanup Keras session when model is deleted"""
+        if self.model is not None:
+            K.clear_session()
+            del self.model
+
+    def fit(self, data, **kwargs):
+        # Clear any previous session
+        K.clear_session()
+        
+        # Same implementation as before, but using self.epochs and self.batch_size
+        self.data = data
+        scaler = MinMaxScaler()
+        scaled_data = scaler.fit_transform(data.values.reshape(-1, 1))
+        self.scaler = scaler
+
+        X, y = [], []
+        window_size = 12
+        for i in range(window_size, len(scaled_data)):
+            X.append(scaled_data[i-window_size:i, 0])
+            y.append(scaled_data[i, 0])
+        X, y = np.array(X), np.array(y)
+        X = np.reshape(X, (X.shape[0], X.shape[1], 1))
+
+        self.model = Sequential()
+        self.model.add(GRU(50, return_sequences=True, input_shape=(X.shape[1], 1)))
+        self.model.add(GRU(50))
+        self.model.add(Dense(1))
+        self.model.compile(optimizer='adam', loss='mean_squared_error')
+        self.model.fit(X, y, epochs=self.epochs, batch_size=self.batch_size, verbose=0)
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        last_sequence = self.scaler.transform(self.data.values[-12:].reshape(-1, 1)).flatten().tolist()
+        forecast = []
+        for _ in range(steps):
+            input_seq = np.array(last_sequence[-12:]).reshape((1, 12, 1))
+            pred = self.model.predict(input_seq, verbose=0)
+            forecast.append(pred[0,0])
+            last_sequence.append(pred[0,0])
+        forecast = self.scaler.inverse_transform(np.array(forecast).reshape(-1, 1)).flatten()
+        return pd.Series(forecast, index=pd.date_range(self.data.index[-1] + pd.DateOffset(months=1), 
+                                                     periods=steps, freq='M'))
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="GRU",
+            description="Gated Recurrent Unit - Schnellere Alternative zu LSTM",
+            category=ModelCategory.DEEP_LEARNING,
+            requires_long_history=True,
+            min_data_points=50,
+            default_params={"epochs": 50, "batch_size": 1}
+        )
+
+class SESModel(BaseForecastModel):
+    """SES - Simple Exponential Smoothing."""
+    
+    def __init__(self):
+        super().__init__()
+        self.model = None
+        self.data = None
+
+    def fit(self, data, **kwargs):
+        self.model = SimpleExpSmoothing(data).fit()
+        self.data = data
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        forecast = self.model.forecast(steps)
+        return pd.Series(forecast, index=pd.date_range(self.data.index[-1] + pd.DateOffset(months=1), 
+                                                     periods=steps, freq='M'))
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="SES",
+            description="Simple Exponential Smoothing - für Daten ohne Trend/Saisonalität",
+            category=ModelCategory.STATISTICAL,
+            min_data_points=15,
+            default_params={}
+        )
+
+class SARIMAModel(BaseForecastModel):
+    """SARIMA - Seasonal ARIMA mit Saisonalitäts-Unterstützung."""
+    
+    def __init__(self, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12)):
+        super().__init__(order=order, seasonal_order=seasonal_order)
+        self.order = order
+        self.seasonal_order = seasonal_order
+        self.model = None
+
+    def fit(self, data, **kwargs):
+        self.data = data
+        self.model = SARIMAX(data, order=self.order, seasonal_order=self.seasonal_order).fit()
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        forecast = self.model.forecast(steps=steps)
+        return forecast
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="SARIMA",
+            description="Seasonal ARIMA - für Daten mit Saisonalität",
+            category=ModelCategory.STATISTICAL,
+            requires_stationarity=True,
+            supports_seasonality=True,
+            is_probabilistic=True,
+            min_data_points=40,
+            default_params={"order": (1, 1, 1), "seasonal_order": (1, 1, 1, 12)}
+        )
+
+class HoltWintersModel(BaseForecastModel):
+    """Holt-Winters - Exponential Smoothing mit Trend und Saisonalität."""
+    
+    def __init__(self, seasonal_periods=12):
+        super().__init__(seasonal_periods=seasonal_periods)
+        self.seasonal_periods = seasonal_periods
+        self.model = None
+
+    def fit(self, data, **kwargs):
+        self.model = ExponentialSmoothing(data, seasonal_periods=self.seasonal_periods, seasonal='add').fit()
+        self.data = data
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        forecast = self.model.forecast(steps)
+        return forecast
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="Holt-Winters",
+            description="Exponential Smoothing mit Trend und Saisonalität",
+            category=ModelCategory.STATISTICAL,
+            supports_seasonality=True,
+            min_data_points=24,
+            default_params={"seasonal_periods": 12}
+        )
+
+class XGBoostModel(BaseForecastModel):
+    """XGBoost - Gradient Boosting für Zeitreihen."""
+    
+    def __init__(self, n_estimators=200, window_size=12):
+        super().__init__(n_estimators=n_estimators, window_size=window_size)
+        self.n_estimators = n_estimators
+        self.window_size = window_size
+        self.model = XGBRegressor(n_estimators=self.n_estimators)
+
+    def create_features(self, data):
+        X, y = [], []
+        for i in range(self.window_size, len(data)):
+            X.append(data[i-self.window_size:i])
+            y.append(data[i])
+        return np.array(X), np.array(y)
+
+    def fit(self, data, **kwargs):
+        self.data = data
+        X, y = self.create_features(data.values)
+        self.model.fit(X, y)
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        last_sequence = self.data.values[-self.window_size:].tolist()
+        forecast = []
+        for _ in range(steps):
+            X_input = np.array(last_sequence[-self.window_size:]).reshape(1, -1)
+            pred = self.model.predict(X_input)[0]
+            forecast.append(pred)
+            last_sequence.append(pred)
+        return pd.Series(forecast, index=pd.date_range(self.data.index[-1] + pd.DateOffset(months=1), 
+                                                     periods=steps, freq='M'))
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="XGBoost",
+            description="Extreme Gradient Boosting - leistungsstarkes ML-Modell",
+            category=ModelCategory.MACHINE_LEARNING,
+            requires_long_history=True,
+            min_data_points=50,
+            default_params={"n_estimators": 200, "window_size": 12}
+        )
+
+class RandomForestModel(BaseForecastModel):
+    """Random Forest - Ensemble von Entscheidungsbäumen."""
+    
+    def __init__(self, n_estimators=200, window_size=12):
+        super().__init__(n_estimators=n_estimators, window_size=window_size)
+        self.n_estimators = n_estimators
+        self.window_size = window_size
+        self.model = RandomForestRegressor(n_estimators=self.n_estimators)
+
+    def create_features(self, data):
+        X, y = [], []
+        for i in range(self.window_size, len(data)):
+            X.append(data[i-self.window_size:i])
+            y.append(data[i])
+        return np.array(X), np.array(y)
+
+    def fit(self, data, **kwargs):
+        self.data = data
+        X, y = self.create_features(data.values)
+        self.model.fit(X, y)
+        self.is_fitted = True
+
+    def predict(self, steps):
+        if not self.is_fitted:
+            raise RuntimeError("Modell muss erst mit fit() trainiert werden")
+        last_sequence = self.data.values[-self.window_size:].tolist()
+        forecast = []
+        for _ in range(steps):
+            X_input = np.array(last_sequence[-self.window_size:]).reshape(1, -1)
+            pred = self.model.predict(X_input)[0]
+            forecast.append(pred)
+            last_sequence.append(pred)
+        return pd.Series(forecast, index=pd.date_range(self.data.index[-1] + pd.DateOffset(months=1), 
+                                                     periods=steps, freq='M'))
+    
+    @classmethod
+    def get_metadata(cls) -> ModelMetadata:
+        return ModelMetadata(
+            name="Random Forest",
+            description="Ensemble von Entscheidungsbäumen - robust gegen Overfitting",
+            category=ModelCategory.MACHINE_LEARNING,
+            requires_long_history=True,
+            min_data_points=50,
+            default_params={"n_estimators": 200, "window_size": 12}
+        )
+    
+# Am Ende der Datei nach der EnsembleModel-Klasse einfügen:
+
+class TransformerModel:
+    def __init__(self, window_size=12, n_heads=4, d_model=64, n_layers=2, dropout=0.1):
+        self.window_size = window_size
+        self.n_heads = n_heads
+        self.d_model = d_model
+        self.n_layers = n_layers
+        self.dropout = dropout
+        self.scaler = None
+        self.model = None
+        self.data = None
+        
+    def build_model(self, input_shape):
+        from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization, Dense, Input
+        from tensorflow.keras.models import Model
+        import tensorflow as tf
+        
+        inputs = Input(shape=input_shape)
+        x = inputs
+        
+        # Transformer Encoder
+        for _ in range(self.n_layers):
+            # Multi-head attention
+            attention_output = MultiHeadAttention(
+                num_heads=self.n_heads, key_dim=self.d_model
+            )(x, x)
+            attention_output = tf.keras.layers.Dropout(self.dropout)(attention_output)
+            x = LayerNormalization(epsilon=1e-6)(x + attention_output)
+            
+            # Feed forward
+            ffn_output = Dense(self.d_model*4, activation="relu")(x)
+            ffn_output = Dense(self.d_model)(ffn_output)
+            ffn_output = tf.keras.layers.Dropout(self.dropout)(ffn_output)
+            x = LayerNormalization(epsilon=1e-6)(x + ffn_output)
+        
+        # Output
+        outputs = Dense(1)(x[:, -1, :])  # Use only the last sequence element for prediction
+        
+        model = Model(inputs=inputs, outputs=outputs)
+        model.compile(optimizer='adam', loss='mse')
+        return model
+        
+    def fit(self, data):
+        self.data = data
+        scaler = MinMaxScaler()
+        scaled_data = scaler.fit_transform(data.values.reshape(-1, 1))
+        self.scaler = scaler
+        
+        X, y = [], []
+        for i in range(self.window_size, len(scaled_data)):
+            X.append(scaled_data[i-self.window_size:i, 0])
+            y.append(scaled_data[i, 0])
+        X, y = np.array(X), np.array(y)
+        
+        # Reshape for transformer (batch_size, sequence_length, features)
+        X = np.reshape(X, (X.shape[0], X.shape[1], 1))
+        
+        self.model = self.build_model((X.shape[1], 1))
+        self.model.fit(X, y, epochs=50, batch_size=32, verbose=0)
+        
+    def predict(self, steps):
+        last_sequence = self.scaler.transform(self.data.values[-self.window_size:].reshape(-1, 1)).flatten().tolist()
+        forecast = []
+        
+        for _ in range(steps):
+            input_seq = np.array(last_sequence[-self.window_size:]).reshape((1, self.window_size, 1))
+            pred = self.model.predict(input_seq, verbose=0)
+            forecast.append(pred[0,0])
+            last_sequence.append(pred[0,0])
+            
+        forecast = self.scaler.inverse_transform(np.array(forecast).reshape(-1, 1)).flatten()
+        return pd.Series(forecast, index=pd.date_range(self.data.index[-1] + pd.DateOffset(months=1), 
+                                                     periods=steps, freq='M'))
+
+class EnsembleModel:
+    def __init__(self, models):
+        self.models = models
+
+    def fit(self, data):
+        for model in self.models:
+            model.fit(data)
+
+    def predict(self, steps):
+        forecasts = pd.DataFrame()
+        for model in self.models:
+            forecasts[model.__class__.__name__] = model.predict(steps)
+        ensemble_forecast = forecasts.mean(axis=1)
+        return ensemble_forecast
