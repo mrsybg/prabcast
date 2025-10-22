@@ -61,6 +61,7 @@ uploads/
 *.xlsx
 *.xls
 !templates/*.csv
+!sample_data/*.csv  # Demo-Daten dürfen gepusht werden
 
 # Model Cache
 *.pkl

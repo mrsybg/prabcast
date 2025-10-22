@@ -17,20 +17,48 @@ init_state()
 @ErrorHandler.handle_errors(show_details=True)
 def load_csv(uploaded_file):
     """
-    Lädt eine CSV-Datei mit Fehlerbehandlung.
+    Lädt eine CSV-Datei mit automatischer Trennzeichen-Erkennung.
     
     Raises:
         DataLoadError: Wenn die Datei nicht gelesen werden kann
     """
     try:
-        df = pd.read_csv(uploaded_file, delimiter=';')
-        log_data_operation("CSV-Datei geladen", data_shape=(len(df), len(df.columns)))
+        # Versuche verschiedene Trennzeichen
+        delimiters = [';', ',', '\t', '|']
+        df = None
+        used_delimiter = None
+        
+        for delimiter in delimiters:
+            try:
+                uploaded_file.seek(0)  # Zurück zum Anfang der Datei
+                test_df = pd.read_csv(uploaded_file, delimiter=delimiter, nrows=5)
+                
+                # Prüfe ob das Trennzeichen sinnvoll ist (mindestens 2 Spalten)
+                if len(test_df.columns) >= 2:
+                    uploaded_file.seek(0)  # Nochmal zurück für vollständiges Laden
+                    df = pd.read_csv(uploaded_file, delimiter=delimiter)
+                    used_delimiter = delimiter
+                    break
+            except:
+                continue
+        
+        if df is None or len(df.columns) < 2:
+            raise DataLoadError(
+                message="CSV-Datei konnte nicht korrekt gelesen werden",
+                details="Kein geeignetes Trennzeichen gefunden",
+                help_text="Unterstützte Trennzeichen: Semikolon (;), Komma (,), Tab, Pipe (|)",
+            )
+        
+        log_data_operation("CSV-Datei geladen", data_shape=(len(df), len(df.columns)), delimiter=used_delimiter)
         return df
+        
+    except DataLoadError:
+        raise  # Bereits behandelter Fehler
     except pd.errors.ParserError as e:
         raise DataLoadError(
             message="CSV-Datei konnte nicht geparst werden",
             details=f"Parser-Fehler: {str(e)}",
-            help_text="Überprüfen Sie, ob die Datei das richtige Trennzeichen (;) verwendet.",
+            help_text="Überprüfen Sie, ob die Datei im CSV-Format vorliegt.",
             original_exception=e
         )
     except Exception as e:
