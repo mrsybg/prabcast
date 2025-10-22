@@ -8,7 +8,7 @@
 
 ---
 
-## ⚠️ Demonstrator-Hinweis
+## Demonstrator-Hinweis
 
 **Diese Anwendung ist ein wissenschaftlicher Demonstrator** zur Veranschaulichung moderner Prognoseverfahren und deren praktischer Anwendbarkeit in der Produktion und im Supply Chain Management.
 
@@ -27,22 +27,22 @@
 
 ---
 
-## 🎯 Überblick
+## Überblick
 
 **PrABCast** unterstützt Unternehmen dabei, Maschinelle Lernverfahren in der Absatz- und Bedarfsprognose einzusetzen. Die Anwendung kombiniert klassische statistische Verfahren mit modernen ML-Algorithmen in einer interaktiven Streamlit-Oberfläche.
 
 ### Hauptfunktionen
 
-- **📊 ABC/XYZ-Analyse** – Produktklassifikation nach Wert und Variabilität
-- **📈 Univariate Prognosen** – ARIMA, SARIMA, Prophet, LSTM, XGBoost
-- **🔗 Multivariate Modelle** – Integration externer Einflussfaktoren (Wirtschaftsdaten, Indizes)
-- **📉 Statistische Analysen** – Stationaritätstests, Zeitreihenzerlegung, Korrelationen
-- **🎨 Interaktive Visualisierungen** – Plotly-basierte Dashboards
-- **📁 Datenhandling** – CSV-Import/Export, flexible Aggregation
+- **ABC/XYZ-Analyse** – Produktklassifikation nach Wert und Variabilität
+- **Univariate Prognosen** – ARIMA, SARIMA, Prophet, LSTM, XGBoost
+- **Multivariate Modelle** – Integration externer Einflussfaktoren (Wirtschaftsdaten, Indizes)
+- **Statistische Analysen** – Stationaritätstests, Zeitreihenzerlegung, Korrelationen
+- **Interaktive Visualisierungen** – Plotly-basierte Dashboards
+- **Datenhandling** – CSV-Import/Export, flexible Aggregation
 
 ---
 
-## 🚀 Schnellstart
+## Schnellstart
 
 ### Installation
 
@@ -79,7 +79,7 @@ Siehe [SETUP.md](SETUP.md) für detaillierte Installationsanweisungen.
 
 ---
 
-## 📚 Dokumentation
+## Dokumentation
 
 - **[SETUP.md](SETUP.md)** – Ausführliche Installationsanleitung
 - **[QUICKSTART.md](QUICKSTART.md)** – 5-Minuten-Schnelleinstieg
@@ -87,7 +87,7 @@ Siehe [SETUP.md](SETUP.md) für detaillierte Installationsanweisungen.
 
 ---
 
-## 🏗️ Architektur
+## Architektur
 
 ```
 prabcast/
@@ -112,13 +112,13 @@ prabcast/
 
 ---
 
-## 📄 Lizenz
+## Lizenz
 
 Dieses Projekt ist unter der [MIT License](LICENSE) lizenziert.
 
 ---
 
-## 🔗 Links
+## Links
 
 - **Projektwebsite:** [IPS Forschungsprojekte - PrABCast](https://ips.mb.tu-dortmund.de/forschen-beraten/forschungsprojekte/prabcast/)
 - **RIF Institut:** [www.rif-ev.de](https://www.rif-ev.de)
@@ -126,7 +126,7 @@ Dieses Projekt ist unter der [MIT License](LICENSE) lizenziert.
 
 ---
 
-## 🙏 Danksagungen
+## Acknowledgement
 
 Entwickelt im Rahmen eines Forschungsprojekts in Zusammenarbeit mit:
 - RIF Institut für Forschung und Transfer e.V.
