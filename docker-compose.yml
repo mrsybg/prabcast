@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
     image: prabcast-streamlit:latest
     container_name: prabcast_container
+    env_file:
+      - .env
     ports:
       - "8501:8501"
     environment:
