@@ -65,6 +65,20 @@ streamlit run app/run.py
 
 Die Anwendung öffnet sich automatisch unter `http://localhost:8501`
 
+### Docker Version (Optional)
+```bash
+# Docker Container builden
+docker compose up --build
+
+# Docker Container detached builden
+docker compose up -d --build
+
+# Docker Container runterfahren
+docker compose down
+```
+
+Die Anwendung ist dann unter `http://localhost:8501`
+
 ### Externe APIs (optional)
 
 Für multivariate Prognosen mit Wirtschaftsdaten:

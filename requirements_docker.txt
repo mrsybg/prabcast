@@ -1,0 +1,44 @@
+# Use the CPU-specific index for Torch
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Core UI & System
+streamlit
+psutil
+
+# Data Processing
+pandas
+numpy
+scipy
+openpyxl
+beautifulsoup4
+python-dotenv
+
+# Visualization
+plotly
+matplotlib
+
+# Machine Learning (CPU optimized)
+tensorflow
+torch
+torchaudio
+torchmetrics
+pytorch-lightning
+xgboost
+scikit-learn
+statsmodels
+arch
+prophet
+pmdarima
+
+# Financial & External Data
+yfinance
+fredapi
+holidays
+requests
+
+# Extra Utilities
+tqdm
+joblib
+pyarrow
+watchdog
+cmdstanpy
