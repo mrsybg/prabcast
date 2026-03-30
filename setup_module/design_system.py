@@ -8,7 +8,60 @@ einheitliche und professionelle Benutzeroberfläche zu gewährleisten.
 """
 
 import streamlit as st
+import plotly.graph_objects as go
+import plotly.io as pio
 from typing import Optional, Callable, Any
+
+
+# ============================================================================
+# GLOBAL PLOTLY TEMPLATE – used by all charts across the app
+# ============================================================================
+
+_CHART_COLORS = [
+    "#1F77B4",  # blue
+    "#E45756",  # red
+    "#2CA02C",  # green
+    "#7B2D8E",  # purple
+    "#FF7F0E",  # orange
+    "#17BECF",  # cyan
+    "#D62728",  # dark red
+    "#9467BD",  # medium purple
+    "#8C564B",  # brown
+    "#E377C2",  # pink
+    "#BCBD22",  # olive
+    "#1B9E77",  # teal
+]
+
+_prabcast_template = go.layout.Template()
+_prabcast_template.layout = go.Layout(
+    font=dict(family="Arial, sans-serif", size=13),
+    colorway=_CHART_COLORS,
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+    xaxis=dict(showgrid=True, gridcolor="#EEEEEE", zeroline=False),
+    yaxis=dict(showgrid=True, gridcolor="#EEEEEE", zeroline=False),
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=-0.25,
+        xanchor="center",
+        x=0.5,
+    ),
+    margin=dict(l=60, r=30, t=50, b=60),
+    hoverlabel=dict(bgcolor="white", font_size=12),
+)
+
+pio.templates["prabcast"] = _prabcast_template
+pio.templates.default = "prabcast"
+
+CHART_COLORS = _CHART_COLORS  # public access
+
+
+def get_chart_colors(count: int):
+    """Return a color list of the requested length, cycling if needed."""
+    if count <= 0:
+        return []
+    return [CHART_COLORS[index % len(CHART_COLORS)] for index in range(count)]
 
 
 class UIComponents:
@@ -81,7 +134,9 @@ class UIComponents:
         'warning': '#FFA500',      # Orange
         'error': '#FF4B4B',        # Rot
         'info': '#4A9EFF',         # Blau
-        'neutral': '#808495'       # Grau
+        'neutral': '#808495',      # Grau
+        'best': '#d4edda',         # Hellgrün – beste Metrik
+        'worst': '#f8d7da',        # Hellrot  – schlechteste Metrik
     }
     
     # ============================================================================
@@ -464,3 +519,76 @@ def get_icon(key: str, fallback: str = '') -> str:
 def get_color(key: str) -> str:
     """Convenience function for getting colors"""
     return UI.get_color(key)
+
+
+# ============================================================================
+# SHARED METRICS EXPLAINER (used by forecast.py & multivariate_forecast.py)
+# ============================================================================
+
+METRICS_EXPLANATION = """
+| Metrik | Bedeutung | Interpretation |
+|--------|-----------|---------------|
+| **MAE** | Mittlerer absoluter Fehler | Durchschnittliche Abweichung in Originaleinheiten. Kleiner = besser. |
+| **RMSE** | Wurzel des mittleren quadratischen Fehlers | Bestraft große Fehler stärker. Kleiner = besser. |
+| **sMAPE** | Symmetrischer mittlerer prozentualer Fehler | Relative Genauigkeit in %. Kleiner = besser. |
+| **Bias** | Systematische Abweichung | Positiv → Überschätzung, Negativ → Unterschätzung. Näher an 0 = besser. |
+| **Theil's U** | Vergleich mit naiver Prognose | < 1 = besser als naiv, > 1 = schlechter als naiv. |
+| **Trainingszeit** | Dauer des Modelltrainings | In Sekunden. |
+| **Memory** | Speicherverbrauch beim Training | In Megabyte. |
+
+**Performance-Diagramm:** sMAPE (Y) vs. Trainingszeit (X). Punktgröße = Speicherverbrauch. Optimal: links unten, klein.
+"""
+
+
+# ============================================================================
+# METRICS HIGHLIGHTING – colour-code best / worst per column
+# ============================================================================
+
+def highlight_best_metrics(styler, higher_is_better=None, closest_to_zero=None):
+    """
+    Applies green / red background to the best / worst value in each numeric
+    column of a ``pd.io.formats.style.Styler`` object.
+
+    Args:
+        styler: pandas Styler (from ``df.style``)
+        higher_is_better: set of column names where a higher value is better.
+                  All other numeric columns default to lower-is-better.
+        closest_to_zero: set of column names where the absolute value closest
+                 to zero is best.
+    Returns:
+        The same Styler, with ``background-color`` applied.
+    """
+    if higher_is_better is None:
+        higher_is_better = set()
+    if closest_to_zero is None:
+        closest_to_zero = set()
+
+    def _color(s):
+        """Return background-color styles for a Series."""
+        if s.dtype.kind not in "biufc":  # not numeric
+            return [""] * len(s)
+
+        valid_values = s.dropna()
+        if len(valid_values) <= 1:
+            return [""] * len(s)
+
+        if s.name in closest_to_zero:
+            abs_values = s.abs()
+            is_best = abs_values == abs_values.min()
+            is_worst = abs_values == abs_values.max()
+        else:
+            is_best = s == (s.max() if s.name in higher_is_better else s.min())
+            is_worst = s == (s.min() if s.name in higher_is_better else s.max())
+
+        colors = []
+        for best, worst in zip(is_best, is_worst):
+            if best:
+                colors.append(f"background-color: {UIComponents.COLORS['best']}")
+            elif worst:
+                colors.append(f"background-color: {UIComponents.COLORS['worst']}")
+            else:
+                colors.append("")
+        return colors
+
+    return styler.apply(_color)
+

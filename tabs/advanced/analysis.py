@@ -55,10 +55,10 @@ def interpolate_quarterly_data(df, quarterly_cols):
     return df_interpolated
 
 def perform_analysis(sales_series, indices_data, debug: bool = False):
-    # ✨ DEBUG INFO in Expander
-    with st.expander("🔍 Debug-Informationen", expanded=False):
-        st.write(f"**Sales series:** {len(sales_series)} points, date range: {sales_series.index.min()} to {sales_series.index.max()}")
-        st.write(f"**Indices data:** {indices_data.shape[1]} series, date range: {indices_data.index.min()} to {indices_data.index.max()}")
+    if debug:
+        with st.expander("🔍 Debug-Informationen", expanded=False):
+            st.write(f"**Sales series:** {len(sales_series)} points, date range: {sales_series.index.min()} to {sales_series.index.max()}")
+            st.write(f"**Indices data:** {indices_data.shape[1]} series, date range: {indices_data.index.min()} to {indices_data.index.max()}")
 
     if sales_series.name is None:
         sales_series.name = 'Sales'
@@ -92,10 +92,9 @@ def perform_analysis(sales_series, indices_data, debug: bool = False):
     
     common_dates = sales_series.index.intersection(indices_data.index)
     
-    # ✨ DEBUG INFO in Expander
-    with st.expander("🔍 Debug-Informationen", expanded=False):
-        st.write(f"**Common dates found:** {len(common_dates)}")
-        if debug:
+    if debug:
+        with st.expander("🔍 Debug-Informationen", expanded=False):
+            st.write(f"**Common dates found:** {len(common_dates)}")
             st.write("Common dates:", common_dates)
 
     if len(common_dates) == 0:
@@ -109,7 +108,6 @@ def perform_analysis(sales_series, indices_data, debug: bool = False):
     sales_series = sales_series[common_dates]
     indices_data = indices_data.loc[common_dates]
     
-    # ✨ DEBUG INFO in Expander
     if debug:
         with st.expander("🔍 Debug-Informationen", expanded=False):
             st.write("**Sales series after restricting to common dates:**")
@@ -126,7 +124,6 @@ def perform_analysis(sales_series, indices_data, debug: bool = False):
         with st.expander("Dropped indices with all NaN values"):
             st.warning(f"Dropped indices: {dropped_nan_cols}")
     
-    # ✨ DEBUG INFO in Expander
     if debug:
         with st.expander("🔍 Debug-Informationen", expanded=False):
             st.write("**Indices data after dropna (all NaN):**")
@@ -138,7 +135,6 @@ def perform_analysis(sales_series, indices_data, debug: bool = False):
         with st.expander("Dropped constant indices"):
             st.warning(f"Dropped constant indices: {constant_cols}")
     
-    # ✨ DEBUG INFO in Expander
     if debug:
         with st.expander("🔍 Debug-Informationen", expanded=False):
             st.write("**Indices data after dropping constant columns:**")
@@ -146,22 +142,20 @@ def perform_analysis(sales_series, indices_data, debug: bool = False):
 
     data = pd.concat([sales_series, indices_data], axis=1)
     
-    # ✨ DEBUG INFO in Expander
-    with st.expander("🔍 Debug-Informationen", expanded=False):
-        if debug:
+    if debug:
+        with st.expander("🔍 Debug-Informationen", expanded=False):
             st.write("**Combined data before cleaning:**")
             st.dataframe(data.head())
-        st.write(f"**Combined data shape before cleaning:** {data.shape}")
-        st.write(f"**Total missing values before cleaning:** {data.isnull().sum().sum()}")
+            st.write(f"**Combined data shape before cleaning:** {data.shape}")
+            st.write(f"**Total missing values before cleaning:** {data.isnull().sum().sum()}")
 
     data = data.dropna()
     
-    # ✨ DEBUG INFO in Expander
-    with st.expander("🔍 Debug-Informationen", expanded=False):
-        if debug:
+    if debug:
+        with st.expander("🔍 Debug-Informationen", expanded=False):
             st.write("**Data after dropping NA:**")
             st.dataframe(data.head())
-        st.write(f"**Data shape after cleaning:** {data.shape}")
+            st.write(f"**Data shape after cleaning:** {data.shape}")
 
     if data.empty or data.shape[1] < 2:
         st.error("No valid data available after cleaning indices.")
@@ -173,10 +167,10 @@ def perform_analysis(sales_series, indices_data, debug: bool = False):
 
     correlations = data.corr()[sales_series.name].drop(sales_series.name).dropna().sort_values(ascending=False)
     
-    # ✨ DEBUG INFO in Expander
-    with st.expander("🔍 Debug-Informationen", expanded=False):
-        st.write("**Correlations computed (Top 5):**")
-        st.dataframe(correlations.head())
+    if debug:
+        with st.expander("🔍 Debug-Informationen", expanded=False):
+            st.write("**Correlations computed (Top 5):**")
+            st.dataframe(correlations.head())
 
     try:
         with st.spinner('Performing Granger causality tests...'):

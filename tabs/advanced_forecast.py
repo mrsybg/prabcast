@@ -75,46 +75,32 @@ def display_tab():
                     help_text="Überprüfen Sie, ob das Produkt Verkaufsdaten enthält."
                 )
                 return
-                return
 
-            # Neue Sektion für eigene CSV-Daten
-            st.subheader("Eigene Daten hinzufügen (optional)")
-            
-            with st.expander("Eigene Daten hinzufügen"):
-                    st.write("""
-                        Wenn Sie eigene interne Daten nutzen möchten, wie beispielsweise **Marketingdaten**, **CRM-Daten** oder andere betriebliche Informationen,
-                        können Sie diese hier hochladen. Die CSV-Datei muss folgendes Format haben:
-                        
-                        - **Erste Spalte:** Datum im Format YYYY-MM-DD  
-                        - **Weitere Spalten:** Interne Attribute/Features (z.B. Marketingausgaben, Leads, Verkaufszahlen)
-                        
-                        Beispiel:
-                        ```
-                        Datum,Marketingausgaben,CRM_Leads
-                        2020-01-01,10000,250
-                        2020-02-01,12000,300
-                        ```
-                        
-                        Die Daten werden auf Monatsebene aggregiert und mit den anderen Indexdaten verknüpft.
-                    """)
-                
-            # Erstelle eine Beispiel-CSV-Datei zum Herunterladen
-            example_csv = """Datum,Umsatz_Marketing,Mitarbeiter_Anzahl,Kundenzufriedenheit,Marktanteil
-2020-01-01,10000,250,4.2,0.15
-2020-02-01,12000,255,4.3,0.16
-2020-03-01,15000,260,4.1,0.16
-2020-04-01,13000,265,4.0,0.17
-2020-05-01,14000,270,4.2,0.17
-2020-06-01,16000,275,4.4,0.18"""
-                
-            st.download_button(
-                label="Beispiel-CSV herunterladen",
-                data=example_csv,
-                file_name="custom_data_example.csv",
-                mime="text/csv",
-            )
-                
-            uploaded_file = st.file_uploader("CSV-Datei mit eigenen Daten hochladen", type=["csv"])
+            # Eigene CSV-Daten (optional) – kompakt in einem Expander
+            with st.expander("Eigene Daten hinzufügen (optional)"):
+                st.caption(
+                    "Laden Sie eigene interne Daten (z. B. Marketing, CRM) als CSV hoch. "
+                    "Erste Spalte = Datum (YYYY-MM-DD), weitere Spalten = Features."
+                )
+
+                col_dl, col_up = st.columns([1, 3])
+                with col_dl:
+                    example_csv = (
+                        "Datum,Umsatz_Marketing,Mitarbeiter_Anzahl,Kundenzufriedenheit,Marktanteil\n"
+                        "2020-01-01,10000,250,4.2,0.15\n2020-02-01,12000,255,4.3,0.16\n"
+                        "2020-03-01,15000,260,4.1,0.16\n2020-04-01,13000,265,4.0,0.17\n"
+                        "2020-05-01,14000,270,4.2,0.17\n2020-06-01,16000,275,4.4,0.18"
+                    )
+                    st.download_button(
+                        label="Beispiel-CSV",
+                        data=example_csv,
+                        file_name="custom_data_example.csv",
+                        mime="text/csv",
+                    )
+                with col_up:
+                    uploaded_file = st.file_uploader(
+                        "CSV-Datei hochladen", type=["csv"], label_visibility="collapsed"
+                    )
             custom_data = None
                 
             if uploaded_file is not None:
@@ -166,6 +152,12 @@ def display_tab():
             # Unpack new 9 values from questionnaire:
             (industries, locations, fmp_stocks, fmp_commodities, metal_prices,
              series_per_category, number_of_sources, start_date, end_date) = get_user_inputs(min_date, max_date)
+
+            show_debug_details = st.toggle(
+                "Technische Details anzeigen",
+                value=False,
+                help="Zeigt zusätzliche Debug- und Diagnoseinformationen für Datenanreicherung und Analyse an."
+            )
 
             if not any([industries, locations, fmp_stocks, fmp_commodities, metal_prices]) and custom_data is None:
                 UserFeedback.warning("Bitte wählen Sie mindestens eine Kategorie oder geben Sie Ticker ein oder laden Sie eigene Daten hoch")
@@ -245,34 +237,25 @@ def display_tab():
                     status_text.text("Verarbeite Daten... (50%)")
                     progress_bar.progress(50)
                     
-                    # Debug information in an expander so it's hidden by default
-                    with st.expander("Debug: Datenfrequenz-Info", expanded=False):
-                        st.write("Prüfe Datenfrequenz...")
-                        # Check the frequency of indices data
-                        st.write(f"Shape der Indexdaten: {indices_data.shape}")
-                        if not indices_data.empty:
-                            # Check the frequency of index data
-                            date_diffs = indices_data.index.to_series().diff().value_counts()
-                            st.write("Zeitliche Abstände zwischen den Daten (Tage):")
-                            st.write(date_diffs)
-                            # Sample of the data
-                            st.write("Stichprobe der Indexdaten (erste 10 Zeilen):")
-                            st.write(indices_data.head(10))
-                            # Fix for the 'nunique' error - use numpy's unique function instead
-                            sample_col = indices_data.columns[0] if len(indices_data.columns) > 0 else None
-                            if sample_col:
-                                def check_repeated_values(window):
-                                    # Use numpy's unique function which works with ndarray
-                                    return len(np.unique(window)) == 1
-                                
-                                # Use apply with a function that counts unique values
-                                repeated_values = []
-                                for i in range(2, len(indices_data)):
-                                    if i >= 3:
-                                        window = indices_data[sample_col].iloc[i-3:i].values
-                                        if len(np.unique(window)) == 1:
-                                            repeated_values.append(i)
-                                st.write(f"Anzahl der Stellen mit 3 identischen Werten in Folge: {len(repeated_values)}")
+                    if show_debug_details:
+                        with st.expander("Technische Details: Datenfrequenz", expanded=False):
+                            st.write("Prüfe Datenfrequenz...")
+                            st.write(f"Shape der Indexdaten: {indices_data.shape}")
+                            if not indices_data.empty:
+                                date_diffs = indices_data.index.to_series().diff().value_counts()
+                                st.write("Zeitliche Abstände zwischen den Daten (Tage):")
+                                st.write(date_diffs)
+                                st.write("Stichprobe der Indexdaten (erste 10 Zeilen):")
+                                st.write(indices_data.head(10))
+                                sample_col = indices_data.columns[0] if len(indices_data.columns) > 0 else None
+                                if sample_col:
+                                    repeated_values = []
+                                    for i in range(2, len(indices_data)):
+                                        if i >= 3:
+                                            window = indices_data[sample_col].iloc[i-3:i].values
+                                            if len(np.unique(window)) == 1:
+                                                repeated_values.append(i)
+                                    st.write(f"Anzahl der Stellen mit 3 identischen Werten in Folge: {len(repeated_values)}")
                     
                     # Update progress
                     status_text.text("Interpoliere Datenwerte... (60%)")
@@ -296,11 +279,9 @@ def display_tab():
                     
                     # If we detected quarterly patterns
                     if quarterly_pattern_cols:
-                        with st.expander("Hinweis zur Dateninterpolation", expanded=False):
-                            st.warning(f"""
-                                In {len(quarterly_pattern_cols)} von {indices_data.shape[1]} Zeitreihen wurde ein quartalsweises Muster erkannt.
-                                Diese Daten werden interpoliert, um monatliche Werte zu erhalten.
-                            """)
+                        st.caption(
+                            f"ℹ️ Quartalsmuster erkannt: {len(quarterly_pattern_cols)} von {indices_data.shape[1]} Zeitreihen werden zur monatlichen Nutzung interpoliert."
+                        )
                         # Create a copy with interpolated values for quarterly columns
                         for col in quarterly_pattern_cols:
                             # Extract the quarterly values (every 3rd value)
@@ -328,7 +309,7 @@ def display_tab():
                     indices_data = indices_data.loc[common_dates]
 
                     # Perform analysis
-                    results = perform_analysis(product_df[product], indices_data)
+                    results = perform_analysis(product_df[product], indices_data, debug=show_debug_details)
                     
                     # Update progress
                     status_text.text("Bereite Ergebnisdarstellung vor... (90%)")

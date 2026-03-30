@@ -32,7 +32,7 @@ from setup_module.model_registry import get_model_registry
 from app.models import EnsembleModel  # Nur Ensemble noch direkt
 
 # ✨ NEUE UX: UI Components
-from setup_module.design_system import UIComponents
+from setup_module.design_system import UIComponents, CHART_COLORS, METRICS_EXPLANATION, highlight_best_metrics, get_chart_colors
 from setup_module.ui_helpers import (
     display_model_selector_with_info,
     safe_execute,
@@ -113,80 +113,8 @@ def display_tab():
             das für Ihre Datensituation und Ihre Anforderungen passende Modell finden und so Ihre Prognosequalität steigern.
         """)
 
-    with st.expander("Informationen zu den Metriken und dem Performance Vergleich"):
-        st.write("""
-            **Metriken**:
-            1. **MAE (Mean Absolute Error)**:
-            
-            Der **MAE** misst den durchschnittlichen Betrag der Fehler zwischen den vorhergesagten 
-            und den tatsächlichen Verkaufszahlen. Er wird berechnet, indem man die absoluten Differenzen zwischen den 
-            vorhergesagten und den tatsächlichen Werten nimmt und dann den Durchschnitt dieser Werte bildet.
-            
-            - **Vorteil**: MAE ist intuitiv und gibt die durchschnittliche Fehlergröße direkt in den Einheiten der 
-            Verkaufszahlen an, ohne dass überproportional große Fehler stärker gewichtet werden.
-            
-            - **Nachteil**: MAE ignoriert die Richtung der Fehler (ob die Vorhersagen zu hoch oder zu niedrig sind). 
-            
-            2. **RMSE (Root Mean Squared Error)**:
-            
-            Der **RMSE** ist ebenfalls eine Maßzahl für die Differenzen zwischen den vorhergesagten und den 
-            tatsächlichen Werten. Er berechnet den Durchschnitt der quadrierten Fehler, bevor dann die Quadratwurzel gezogen wird.
-            
-            - **Vorteil**: RMSE betont größere Fehler stärker, da sie quadriert werden. Das ist hilfreich, wenn man große Fehler vermeiden will.
-            
-            - **Nachteil**: Wegen der Quadrate kann RMSE von Ausreißern stark beeinflusst werden.
-            
-            3. **sMAPE (Symmetric Mean Absolute Percentage Error)**:
-            
-            Der **sMAPE** ist ein relatives Maß für die Genauigkeit der Vorhersage, das in Prozent ausgedrückt wird. 
-            Es handelt sich um eine verbesserte Version des MAPE (Mean Absolute Percentage Error), um Symmetrie 
-            zwischen Über- und Unterschätzungen zu gewährleisten.
-            
-            - **Vorteil**: sMAPE ist nützlich, um den Vorhersagefehler im Verhältnis zur Größe der tatsächlichen Werte zu bewerten.
-            
-            - **Nachteil**: sMAPE kann instabil werden, wenn die tatsächlichen Werte nahe null liegen.
-            
-            4. **Bias**:
-            
-            Der **Bias** misst die systematische Verzerrung des Modells, also ob das Modell im Durchschnitt zu hohe oder zu 
-            niedrige Vorhersagen macht. Ein positiver Bias deutet darauf hin, dass die Vorhersagen tendenziell höher 
-            als die tatsächlichen Werte sind, während ein negativer Bias auf zu niedrige Vorhersagen hinweist.
-            
-            - **Vorteil**: Der Bias zeigt auf, ob eine systematische Abweichung in den Vorhersagen besteht.
-            
-            - **Nachteil**: Bias alleine gibt keine Informationen über die Genauigkeit der einzelnen Vorhersagen, sondern nur über die generelle Tendenz.
-            
-            5. **Theil’s U (Theil's Inequality Coefficient)**:
-            
-            **Theil’s U** ist ein Maß für die Vorhersagegenauigkeit. Es vergleicht das Verhältnis zwischen dem RMSE des 
-            Modells und dem RMSE einer "naiven" Vorhersage, die keine intelligenten Vorhersagemechanismen anwendet 
-            (z. B. einfach den letzten bekannten Wert für die nächste Periode verwendet).
-            
-            - **Vorteil**: Theil’s U zeigt an, wie gut das Modell im Vergleich zu einer einfachen, naiven Methode ist. 
-            Ein Wert unter 1 bedeutet, dass das Modell besser ist als die naive Methode.
-            
-            - **Nachteil**:  Es ist komplexer zu interpretieren als andere Fehlermaße.
-            
-             6. **Trainingszeit**:
-             
-             Die **Trainingszeit** gibt die Zeit an, die das Modell benötigt, um aus den Trainingsdaten zu lernen. 
-             Dies umfasst das Anpassen der Modellparameter und die Ausführung von Optimierungsprozessen.
-             Die Trainingszeit ist ein wichtiger Faktor in der Modellwahl, besonders wenn man mit großen Datensätzen 
-             oder in Echtzeitanwendungen arbeitet. Längere Trainingszeiten können in ressourcenbegrenzten Umgebungen problematisch sein.
-             
-             7. **Memory Usage**:
-             
-             Die **Memory Usage** beschreibt den Speicherverbrauch des Modells während des Trainings und der Vorhersage. 
-             Dieser Aspekt ist besonders relevant, wenn große Modelle oder Datenmengen verarbeitet werden müssen.
-             
-             **Performance Vergleich**
-             
-             Das Diagramm visualisiert die 3 Metriken **sMAPE**, **Trainingszeit in Sekunden** und den **Speicherverbrauch**.
-             Dabei liegt der sMAPE auf der Y-Achse und die Trainingszeit auf der X-Achse. Das optimale Modell liegt also im Nullpunkt.
-             Wenn die Trainingszeit aber kein limitierender Faktor ist, sollte diese nicht überbewertet werden. 
-             Der Speicherverbrauch wird über das Volumen des Punktes beschrieben. Je kleiner dabei der Punkt, desto 
-             kleiner der Speicherverbrauch.
-        """)
+    with st.expander("Metriken & Performance – Erklärung"):
+        st.markdown(METRICS_EXPLANATION)
 
     # Datum Filter für Analysen
     st.subheader("Datumszeitraum für Analysen")
@@ -239,10 +167,10 @@ def display_tab():
         st.error("Fehler: Enddatum muss nach Startdatum liegen.")
         date_filter_active = False
     
-    st.info("""
-        Der gewählte Datumsbereich wird für beide Prognosetypen (univariat und multivariat) angewendet. 
-        Im Tab 'Multivariate Absatzprognose' kann dieser Bereich bei Bedarf weiter angepasst werden.
-    """)
+    st.caption(
+        "Der gewählte Datumsbereich wird für beide Prognosetypen (univariat und multivariat) angewendet. "
+        "Im Tab 'Multivariate Absatzprognose' kann dieser Bereich bei Bedarf weiter angepasst werden."
+    )
 
     st.header("Univariate Absatzprognose")
 
@@ -490,9 +418,8 @@ def display_tab():
                     ))
 
                     # Plot forecasts and confidence intervals
-                    colors = px.colors.qualitative.Set3
                     for i, (name, forecast) in enumerate(forecasts.items()):
-                        color = colors[i % len(colors)]
+                        color = CHART_COLORS[(i + 2) % len(CHART_COLORS)]  # offset so Training/Test keep their colors
                         
                         # Plot forecast
                         fig.add_trace(go.Scatter(
@@ -537,6 +464,10 @@ def display_tab():
                         UI.section_header("Metriken", help_text="Vergleich der Modellperformance")
                         metrics_df = pd.DataFrame(metrics).T
                         metrics_df_styled_easy = format_summary_table(metrics_df, metrics_df.columns[1:8].tolist(), decimal_places=3)
+                        metrics_df_styled_easy = highlight_best_metrics(
+                            metrics_df_styled_easy,
+                            closest_to_zero={'Bias'}
+                        )
                         st.session_state.metrics_df_styled_easy = metrics_df_styled_easy
                         st.dataframe(metrics_df_styled_easy)
                         
@@ -677,16 +608,19 @@ def display_tab():
                         perf_fig.add_trace(go.Scatter(
                             x=time_values,
                             y=smape_values,
-                            mode='markers',
+                            mode='markers+text',
                             marker=dict(
-                                size=[m/5 for m in memory_values],  # Scale bubble size
+                                size=[max(m, 8) for m in memory_values],
                                 sizemode='area',
-                                sizeref=2.*max(memory_values)/(40.**2),
-                                sizemin=4
+                                sizeref=2.*max(memory_values)/(40.**2) if max(memory_values) > 0 else 1,
+                                sizemin=8,
+                                color=get_chart_colors(len(model_names)),
                             ),
-                            text=[f"{name}<br>Memory: {memory:.1f}MB" 
-                                 for name, memory in zip(model_names, memory_values)],
-                            hoverinfo='text'
+                            text=model_names,
+                            textposition='top center',
+                            textfont=dict(size=12),
+                            customdata=memory_values,
+                            hovertemplate='%{text}<br>Zeit: %{x:.2f}s<br>sMAPE: %{y:.2f}%<br>Memory: %{customdata:.1f}MB<extra></extra>'
                         ))
                         
                         perf_fig.update_layout(

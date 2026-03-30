@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from setup_module.helpers import *
+from setup_module.design_system import CHART_COLORS, highlight_best_metrics
 
 def make_unique_columns(df):
     """Append suffixes to duplicate column names to make them unique."""
@@ -18,7 +19,7 @@ def display_results(results, num_top_indices):
         st.error("Keine Ergebnisse.")
         return
     
-    st.header('Prognoseergebnisse')
+    st.header('Ergebnisse der Datenanreicherung')
     index_names = results.get('index_names', {})
     
     # Make index_names unique first to prevent duplicates from the start
@@ -34,18 +35,24 @@ def display_results(results, num_top_indices):
     
     index_names = unique_index_names
 
-    # Display top 5 indices based on total score (keeping only this table)
-    st.subheader('Top 5 Datensätze basierend auf dem Gesamtscore')
+    # Display top 5 indices based on total score with green/red highlighting
+    st.subheader('Top 5 Datensätze nach Gesamtscore')
     top_5_indices = results['top_20_indices'].head(5)
     top_5_indices_styled = format_summary_table(top_5_indices, top_5_indices.columns[1:8].tolist(), decimal_places=4)
+    top_5_indices_styled = highlight_best_metrics(
+        top_5_indices_styled,
+        higher_is_better={'Correlation', 'Feature Importance'}
+    )
     st.table(top_5_indices_styled)
 
     # Correlation plot
     with st.expander("Korrelation mit Absatz"):
         try:
             correlations = results['combined_scores']['Correlation'].rename(index=index_names)
-            fig = px.bar(correlations, title='Korrelation mit Absatz')
-            st.plotly_chart(fig)
+            fig = px.bar(correlations, title='Korrelation mit Absatz',
+                         color_discrete_sequence=[CHART_COLORS[0]])
+            fig.update_layout(showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"Error displaying correlation plot: {e}")
 
@@ -53,8 +60,10 @@ def display_results(results, num_top_indices):
     with st.expander("Feature Importance"):
         try:
             importances = results['combined_scores']['Feature Importance'].rename(index=index_names)
-            fig = px.bar(importances, title='Feature Importance')
-            st.plotly_chart(fig)
+            fig = px.bar(importances, title='Feature Importance',
+                         color_discrete_sequence=[CHART_COLORS[2]])
+            fig.update_layout(showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"Error displaying feature importance plot: {e}")
 
@@ -62,33 +71,47 @@ def display_results(results, num_top_indices):
     with st.expander("Granger Causality P-Werte"):
         try:
             granger_p_values = results['combined_scores']['Granger Causality p-value'].rename(index=index_names)
-            fig = px.bar(granger_p_values, title='Granger Causality P-Werte')
-            st.plotly_chart(fig)
+            fig = px.bar(granger_p_values, title='Granger Causality P-Werte',
+                         color_discrete_sequence=[CHART_COLORS[4]])
+            fig.update_layout(showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"Error displaying Granger causality plot: {e}")
 
     # Sales time series with top indices - only use top N indices
-    st.subheader('Absatzzeitreihe und Top Datensätze nach Datenanreicherung')
+    st.subheader('Absatzzeitreihe und Top Datensätze')
     top_indices = results['top_20_indices'].head(num_top_indices).index.tolist()  # Only take top N indices
     final_df = results['data'][[results['data'].columns[0]] + top_indices].rename(columns=index_names)
     # Make column names unique immediately to avoid DuplicateError in Plotly / narwhals
     final_df = make_unique_columns(final_df)
     
     fig = go.Figure()
-    for col in final_df.columns:
-        fig.add_trace(go.Scatter(x=final_df.index, y=final_df[col], mode='lines', name=col))
-    fig.update_layout(title='Absatzzeitreihe und Top Datensätze nach Datenanreicherung', xaxis_title='Date', yaxis_title='Value')
-    st.plotly_chart(fig)
+    for idx, col in enumerate(final_df.columns):
+        fig.add_trace(go.Scatter(
+            x=final_df.index, y=final_df[col], mode='lines', name=col,
+            line=dict(color=CHART_COLORS[idx % len(CHART_COLORS)])
+        ))
+    fig.update_layout(
+        title='Absatzzeitreihe und Top Datensätze nach Datenanreicherung',
+        xaxis_title='Datum', yaxis_title='Wert', height=500
+    )
+    st.plotly_chart(fig, use_container_width=True)
     
     # Normalized sales time series with top indices
-    st.subheader('Normalisiert: Absatzzeitreihe und Top Datensätze nach Datenanreicherung')
+    st.subheader('Normalisierte Darstellung')
     normalized_df = final_df.apply(lambda x: (x - x.mean()) / x.std())
     
     fig = go.Figure()
-    for col in normalized_df.columns:
-        fig.add_trace(go.Scatter(x=normalized_df.index, y=normalized_df[col], mode='lines', name=col))
-    fig.update_layout(title='Normalisiert: Absatzzeitreihe und Top Datensätze nach Datenanreicherung', xaxis_title='Date', yaxis_title='Normalized Value')
-    st.plotly_chart(fig)
+    for idx, col in enumerate(normalized_df.columns):
+        fig.add_trace(go.Scatter(
+            x=normalized_df.index, y=normalized_df[col], mode='lines', name=col,
+            line=dict(color=CHART_COLORS[idx % len(CHART_COLORS)])
+        ))
+    fig.update_layout(
+        title='Normalisiert: Absatzzeitreihe und Top Datensätze',
+        xaxis_title='Datum', yaxis_title='Normalisierter Wert', height=500
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
     # Final DataFrame - now only includes top N indices
     st.subheader('Datensatz zur Weiterverarbeitung')
